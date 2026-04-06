@@ -1,10 +1,13 @@
+//address that were going to be monitoring, if change in polymarket blockchain was detected, look for the address that the change came from 
+//need another method to validate if its coming from polymarket or not 
+
 async function monitor(address) {
     if (!address) return
 
 
     const pollStart = Date.now()
-    const TIMEOUT = 3 * 60 * 1000 // 3 minutes
-    const threshold = pollStart - (3 * 60 * 1000) //pollstart - 3 minutes cause of potential delays
+    const TIMEOUT = 1 * 60 * 1000 // 3 minutes
+    const threshold = pollStart - (1 * 60 * 1000) //pollstart - 1 minutes cause of potential delays
   
     while (Date.now() - pollStart < TIMEOUT) {
       try {
@@ -24,7 +27,7 @@ async function monitor(address) {
         })
   
         if (newActivity.length > 0) {
-          console.log("NEW DATA:", newActivity)
+          console.log("NEW DATA:", newActivity) //new data from the user such as their most recent trade
           return newActivity
         }
   
@@ -33,12 +36,12 @@ async function monitor(address) {
         console.log("error", err)
       }
   
-      await new Promise(res => setTimeout(res, 5000))
+      await new Promise(res => setTimeout(res, 5000)) // 5 sec delay
     }
   
     return {
       success: false,
-      message: "No new data found"
+      message: "No new data found" //not relevant data 
     }
   }
   

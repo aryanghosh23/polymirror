@@ -1,35 +1,54 @@
-// npm install @polymarket/clob-client
-// npm install ethers
-// Client initialization example and dumping API Keys
-require('dotenv').config()
-import { ApiKeyCreds, ClobClient, OrderType, Side, } from "@polymarket/clob-client";
-import { Wallet } from "@ethersproject/wallet";
+//file to execute the trades 
 
-const host = 'https://clob.polymarket.com';
-const funder =  process.env.MY_WALLET_ADDRESS; // This is your Polymarket Profile Address, where you send UDSC to. 
-const signer = new Wallet(process.env.PRIVATE_KEY); // This is your Private Key. If using email login export from https://reveal.magic.link/polymarket otherwise export from your Web3 Application
+const { ClobClient, OrderType, Side } = require("@polymarket/clob-client");
+const { Wallet } = require("@ethersproject/wallet");
+require("dotenv").config();
 
+const host = "https://clob.polymarket.com";
+const chainId = 137;
 
+const funder = process.env.MY_WALLET_ADDRESS; // This is your Polymarket Profile Address, where you send UDSC to.
+const privateKey = process.env.PRIVATE_KEY; // This is your Private Key. If using email login export from https://reveal.magic.link/polymarket otherwise export from your Web3 Application
 
-// In general don't create a new API key, always derive or createOrDerive
-const creds = new ClobClient(host, 137, signer).createOrDeriveApiKey(); 
+if (!funder || !privateKey) {
+  throw new Error("missing .env values");
+}
+
+const signer = new Wallet(privateKey);
 
 //0: Browser Wallet(Metamask, Coinbase Wallet, etc)
 //1: Magic/Email Login
-const signatureType = 1; 
-  (async () => {
-    const clobClient = new ClobClient(host, 137, signer, await creds, signatureType, funder);
-    const resp2 = await clobClient.createAndPostOrder(
-        {
-            tokenID: "", //Use https://docs.polymarket.com/developers/gamma-markets-api/get-markets to grab a sample token
-            price: 0.01,
-            side: Side.BUY,
-            size: 5,
-        },
-        { tickSize: "0.001",negRisk: false }, //You'll need to adjust these based on the market. Get the tickSize and negRisk T/F from the get-markets above
-        //{ tickSize: "0.001",negRisk: true },
+const signatureType = 1;
 
-        OrderType.GTC, 
+async function execute (tokenID, price, size,)  { //tokenID = market their on, price = how much were going to be putting in, size = how many shares were buying
+  try {
+    const creds = await new ClobClient(host, chainId, signer).createOrDeriveApiKey();
+
+    const clobClient = new ClobClient(
+      host,
+      chainId,
+      signer,
+      creds,
+      signatureType,
+      funder
     );
-    console.log(resp2)
-  })();
+
+    const resp2 = await clobClient.createAndPostOrder(
+      {
+        tokenID: tokenID, //type of market(the clobID)
+        price: price,
+        side: Side.BUY,
+        size: size,
+      },
+      { tickSize: "0.01", negRisk: false }, ///You'll need to adjust these based on the market
+      OrderType.GTC
+    );
+
+    console.log(resp2);
+  } catch (err) {
+    console.error(err);
+  }
+};
+
+
+module.exports = {execute}
