@@ -6,7 +6,7 @@ async function monitor(address) {
 
 
     const pollStart = Date.now()
-    const TIMEOUT = 1 * 60 * 1000 // 3 minutes
+    const TIMEOUT = 1 * 60 * 1000 // 1 minutes
     const threshold = pollStart - (1 * 60 * 1000) //pollstart - 1 minutes cause of potential delays
   
     while (Date.now() - pollStart < TIMEOUT) {
@@ -36,7 +36,7 @@ async function monitor(address) {
         console.log("error", err)
       }
   
-      await new Promise(res => setTimeout(res, 5000)) // 5 sec delay
+      await new Promise(res => setTimeout(res, 10000)) // 10 sec delay
     }
   
     return {

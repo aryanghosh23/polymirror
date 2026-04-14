@@ -3,8 +3,8 @@ const express = require("express");
 const {monitor} = require('./user_info')
 const {traders} = require('./traders')
 const {createClient} = require("@supabase/supabase-js")
-
-const {clean_trade} = require("./clean_trade")
+const {addToQueue} = require("./queue")
+const {Clean_trade} = require("./clean_trade")
 
 const {scoring_traders} = require('./scoring_traders') //remove later
 const{copy_traders} = require("./copy_traders")
@@ -23,55 +23,16 @@ const supabase = createClient(
 app.use(express.json());
 
 //main endpoint where alchemy hits our bot
-app.post("/webhook", (req, res) => { 
-    console.log("route reached")
- 
-    const body = req.body
-    const activities = body?.event?.activity || []
-    
-    // dummy allowed addresses
-    const VALID_ADDRESSES = [
-      "0x1111111111111111111111111111111111111111",
-      "0x64d62f624dff82248a645bb8007f2c8b012c8795",
-      "0x000000" 
-    ]
-    
-    let userAddress = null
-    
-    for (let act of activities) {   //validate address
-console.log("address",act.fromAddress)
+app.post("/", (req, res) => {
+  addToQueue(req.body) //add trade to the queue
 
-        if (VALID_ADDRESSES.includes(act.fromAddress)) {
-            userAddress = act.fromAddress
-            break
-            }
-      }
-  
-      if (!userAddress) {
-        return res.json({
-          success: false,
-          message: "Invalid or unknown address"
-        })
-      }
-      
-      // if valid
-
-
-      console.log("userAddress",userAddress)
-
-      const trade = monitor(userAddress)
-
-      
-      clean_trade(trade)
-      
-      return res.status(200).json({
-        success: true,
-        address: userAddress
-      })
+  return res.status(200).json({
+    success: true,
+    message: "Queued"
   })
+})
 
-
-
+//endpoint to return most recent trades
   app.get("/trades", async(req,res) => { 
 
     try { 
@@ -96,113 +57,41 @@ res.json(trades)
 
 //this endpoint will refresh with new traders maybe every week, 2 days depends on user input
 app.get('/new_traders', async (req, res) => {
-    console.log("route reached");
+  console.log("route reached");
   
-    //remove later(replace with traders method)
+  //remove later(replace with traders method)
 
-    const addresses = await copy_traders(["0x64d62f624dff82248a645bb8007f2c8b012c8795"],3)
-    console.log("address",addresses)
-    const users =  await traders(addresses)
-  console.log("users",users)
+  const addresses = await copy_traders()
+  console.log("address", addresses)
 
+  const users = await traders(addresses)
+  console.log("users", users)
 
-    const rows = users.map(user => ({
-      wallet_address: user.wallet_address,
-      trusted_score: user.trusted_score,   
-      still_monitoring: user.still_monitoring
-    }));
+  const rows = users.map(user => ({
+    wallet_address: user.wallet,
+    trusted_score: user.score,
+    still_monitoring: true,
+    statistics: user.statistics
+  }));
 
-  
-    const { data, error } = await supabase
-      .from('traders')
-      .insert(rows);
+  const { data, error } = await supabase
+    .from('traders')
+    .upsert(rows, { onConflict: 'wallet_address' });
 
-      console.log("succcess")
-  
-    if (error) {
-      console.log(error);
-      return res.status(500).json({ error });
-    }
-  });
+  if (error) {
+    console.log(error);
+    return res.status(500).json({ error });
+  }
 
-
-//endpoint to get user stats
-  app.get("/stats", async (req, res) => {
-    try {
-      const wallet = process.env.MY_WALLET_ADDRESS
-  
-      const [positionsRes, closedRes] = await Promise.all([
-        fetch(`https://data-api.polymarket.com/positions?user=${wallet}`),
-        fetch(`https://data-api.polymarket.com/closed-positions?user=${wallet}`)
-      ])
-  
-      if (!positionsRes.ok || !closedRes.ok) {
-        return res.status(500).json({ error: "failed to fetch polymarket data" })
-      }
-  
-      const positions = await positionsRes.json()
-      const closed = await closedRes.json()
-  
-      const now = new Date()
-      const sevenDaysAgo = new Date(now)
-      sevenDaysAgo.setDate(now.getDate() - 7)
-  
-      const pnl7d = closed.reduce((sum, trade) => {
-        const endDate = trade.endDate ? new Date(trade.endDate) : null
-  
-        if (endDate && endDate >= sevenDaysAgo) {
-          return sum + Number(trade.realizedPnl || 0)
-        }
-  
-        return sum
-      }, 0)
-  
-      const buyTradesLast7Days = closed.filter((trade) => {
-        if (!trade.endDate) return false
-      
-        const tradeDate = new Date(trade.endDate)
-        const sevenDaysAgo = new Date()
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-      
-        return (
-          tradeDate >= sevenDaysAgo
-        )
-      })
+  console.log("success")
+  return res.status(200).json(data)
+});
 
 
-      const tradesToday = buyTradesLast7Days.length 
-  
-      console.log("trades",tradesToday)
-      const last7dClosed = closed.filter((trade) => {
-        if (!trade.endDate) return false
-        return new Date(trade.endDate) >= sevenDaysAgo
-      })
-  
-      const wins = last7dClosed.filter(
-        (trade) => Number(trade.realizedPnl || 0) > 0
-      ).length
-  
-      const winRate7d =
-        last7dClosed.length > 0
-          ? ((wins / last7dClosed.length) * 100).toFixed(2) + "%"
-          : "0.00%"
-  
-      const stats = [
-        { label: "Bot Status", value: "LIVE", sub: "dot" },
-        { label: "Trades(7d)", value: String(tradesToday) },
-        { label: "Win Rate (7d)", value: winRate7d },
-        {
-          label: "PNL",
-          value: `${pnl7d >= 0 ? "+" : "-"}$${Math.abs(pnl7d).toFixed(2)}`
-        },
-      ]
-  
-      res.json(stats)
-    } catch (err) {
-      console.log("stats route error", err)
-      res.status(500).json({ error: "server error" })
-    }
-  })
+//from here and below write endpoints to get user data to be reflected in the frontend
+
+
+
 
 
 

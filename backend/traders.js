@@ -2,7 +2,7 @@
 
 //going to connect to polymarket analytics mcp server to retrieve data 
 
-const {scoring, scoring_traders} = require("./scoring_traders")
+const {scoring_traders} = require("./scoring_traders")
 require("dotenv").config()
 
 const mcp_url = process.env.POLYMARKET_ANALYTICS_MCP_URL
@@ -89,23 +89,41 @@ Rules:
       const rawText = data.content[data.content.length - 1].text;
     
       console.log("raw from mcp",rawText)
-      const traders = JSON.parse(rawText);
+      const parsed_traders = JSON.parse(rawText);
 
-      
-      const scored_traders = scoring_traders(traders)
+      const user_scores = scoring_traders(parsed_traders)
+      const scored_trader_data = parsed_traders.map((trader, index) => ({
+        wallet: trader.wallet,
+        score: user_scores[index],
+        statistics: {
+          win_rate: trader.win_rate,
+          money_won: trader.money_won,
+          money_lost: trader.money_lost,
+          total_pnl: trader.total_pnl
+        }
+      }))
 
-      console.log("scored_traders",scored_traders)
+      console.log("scored_traders",scored_trader_data)
 
-      return scored_traders //going to return json with wallet address and trusted score
+      return scored_trader_data 
 
     }catch(err) { 
         console.log("error",err)
+        return []
     }
 
 
 }
 
-// traders(["0x384a7e595f27e2c1da38e300f3e3aa1be9df4b79", "0x9470ad5f704b311e8470cec193ddb1f3c2d08a30", "0x4c26cb39e509910798502d2013859b6216606f6d", "0x54dbe14d342f129be293df83a12515065b6c0174", "0x436f969d99c90191fbc2c629e6b7a1b754402c7f"])
+module.exports = { traders }
+
+// traders([
+//   '0xbb50e43f1336ac544b71ec3eec51df35e9e5f7c9',
+//   '0x70831c34434486ffb8e33270642604d9c5731937',
+//   '0xbdcb293dd41148a20895d0e818c0d96c0756e811',
+//   '0x2fbccc3918a358ef674854dbd4bbd89b896ef944',
+//   '0x730da7d292794217736d5e4c4653c6cf0473d448'
+// ])
 
 
 module.exports = { traders };

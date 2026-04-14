@@ -1,63 +1,94 @@
 //return token id, size, price going to pass as arguments for execute.js 
 
 //for now only going to record buys 
-const {execute} = require("./execute")
-const {createClient} = require("@supabase/supabase-js")
+const { execute } = require("./execute")
+const { rank_trade } = require("./rank_trade")
+const { createClient } = require("@supabase/supabase-js")
 
 const supabase = createClient(
-    process.env.SUPABASE_URL,
-    process.env.SUPABASE_ANON_KEY
-  )
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+)
 
+async function Clean_trade(trade, wallet) {
+  console.log("clean trade method reached",trade)
+  const result = trade
+    .filter((trade) => trade.side === "BUY")
+    .map((item) => ({
+      price: item.price,
+      size: item.usdcSize / item.price,
+      tokenId: item.asset,
+      icon: item.icon,
+      title: item.title,
+      copy_wallet: item.proxyWallet,
+      position: item.outcome,
+      usdcSize: item.usdcSize
+    }))
 
-async function Clean_trade(trade) { //output of user_info.js is going to be fed in here 
+  if (result.length === 0) {
+    console.log("not a buy")
+    return
+  }
 
-    const result = trade.filter((trade) => trade.side === "BUY").map(item => ({
-        
-        price: item.price,
-        size: item.usdcSize / item.price,
-        tokenId: item.asset,
-        icon: item.icon,
-        title: item.title,
-        copy_wallet: item.proxyWallet,
-        position: item.outcome,
-        usdcSize: item.usdcSize 
+  try {
+    const tradeScore = await rank_trade(trade, wallet)  //rank trade using our method 
 
-      }))
+    console.log("ranking trade",tradeScore )
 
-      if(result.length == 0) {
-        console.log("not a buy")
-        return
-      }
+    if (tradeScore >= 7) {
+      // await execute(result[0].tokenId, result[0].price, result[0].size)
 
-    //   console.log(result[0].tokenId,result[0].price,result[0].size)
-
-
-    //   execute(result[0].tokenId,result[0].price,result[0].size)
-
-      //if trade execute is valid insert into db cause trade was successul
-
-      try { 
-
+      console.log("trade was executed")
+      //trade was executed
       const { data, error } = await supabase
-  .from("trades")
-  .insert([
-    {
-      user_copy: result[0].copy_wallet,
-      trade_name: result[0].title,
-      icon: result[0].icon ,
-      price: result[0].usdcSize,
-      position: result[0].position,
-      trade_score: 86
-    }
-  ]);
-      }catch(err)  {
-        console.log("err",err)
+        .from("trades")
+        .insert([
+          {
+            user_copy: result[0].copy_wallet,
+            trade_name: result[0].title,
+            icon: result[0].icon,
+            price: result[0].usdcSize,
+            position: result[0].position,
+            trade_score: tradeScore,
+            status: "EXECUTE"
+          }
+        ])
+
+        //trade was recorded in db
+
+      if (error) {
+        console.log("supabase insert error", error)
       }
 
+    } else {
+      const { data, error } = await supabase
+        .from("trades")
+        .insert([
+          {
+            user_copy: result[0].copy_wallet,
+            trade_name: result[0].title,
+            icon: result[0].icon,
+            price: result[0].usdcSize,
+            position: result[0].position,
+            trade_score: tradeScore,
+            status: "PASS"
+          }
+        ])
 
+        console.log("trade was passed instead")
 
+      if (error) {
+        console.log("supabase insert error", error)
+      }
+
+      console.log("trade failed because score was below 7")
+    }
+  } catch (err) {
+    console.log("err", err)
+  }
 }
+
+
 
 // Clean_trade(
 //  [
@@ -84,6 +115,6 @@ async function Clean_trade(trade) { //output of user_info.js is going to be fed 
 //     profileImage: '',
 //     profileImageOptimized: ''
 //   }
-// ])
+// ],"0x64d62f624dff82248a645bb8007f2c8b012c8795")
 
 module.exports = {Clean_trade}
