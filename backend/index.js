@@ -90,13 +90,75 @@ app.get('/new_traders', async (req, res) => {
 
 //from here and below write endpoints to get user data to be reflected in the frontend
 
+// all tracked traders with their scores and statistics
+app.get("/traders", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("traders")
+      .select("*")
+      .order("trusted_score", { ascending: false })
 
+    if (error) throw error
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
+// single trader by wallet address
+app.get("/traders/:wallet", async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from("traders")
+      .select("*")
+      .eq("wallet_address", req.params.wallet)
+      .single()
 
+    if (error) throw error
+    res.json(data)
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
+// dashboard summary — bot status, trade counts, win rate, p&l
+app.get("/dashboard", async (_req, res) => {
+  try {
+    const { data: trades, error } = await supabase
+      .from("trades")
+      .select("*")
 
+    if (error) throw error
 
-  
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const tradesToday = trades.filter(t => new Date(t.created_at) >= today).length
+
+    const executed = trades.filter(t => t.status === "EXECUTE")
+    const wins = executed.filter(t => t.trade_score >= 7)
+    const winRate = executed.length > 0 ? wins.length / executed.length : 0
+
+    const { data: trackedTraders, error: traderErr } = await supabase
+      .from("traders")
+      .select("wallet_address")
+      .eq("still_monitoring", true)
+
+    if (traderErr) throw traderErr
+
+    res.json({
+      botStatus: "running",
+      tradesToday,
+      winRate7d: winRate,
+      activeTradersTracked: trackedTraders.length,
+      totalExecuted: executed.length,
+      totalPassed: trades.filter(t => t.status === "PASS").length,
+    })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 
 app.listen(PORT, () => {
   console.log(`running on http://localhost:${PORT}`);
