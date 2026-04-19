@@ -42,7 +42,7 @@ const {data,error} = await supabase
 
 if(error) throw error;
 
-const trades = [...data].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0,4)
+const trades = [...data].sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
 
 res.json(trades)
 

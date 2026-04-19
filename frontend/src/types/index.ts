@@ -2,7 +2,8 @@
 
 export type TraderStatus = "active" | "inactive" | "watchlist";
 export type TradeSide = "YES" | "NO";
-export type TradeDecisionStatus = "copied" | "skipped" | "pending";
+export type TradeDecisionStatus = "copied" | "passed";
+export type TradeStatus = "open" | "closed";
 export type Category = "politics" | "sports" | "crypto" | "finance" | "science" | "entertainment" | "other";
 
 export interface Trader {
@@ -11,6 +12,7 @@ export interface Trader {
   username: string;
   avatarInitials: string;
   overallScore: number;       // 0–100
+  trustedScore: number;
   winRate: number;            // 0–1
   avgROI: number;             // decimal, e.g. 0.18 = 18%
   totalTrades: number;
@@ -33,17 +35,23 @@ export interface TradeSignal {
   traderId: string;
   traderName: string;
   traderScore: number;
+  icon: string | null;
   market: string;
   marketSlug: string;
   side: TradeSide;
   size: number;               // USDC
-  tradeScore: number;         // 0–100
+  price: number;
+  tradeScore: number;
   timestamp: string;          // ISO
   category: Category;
+  decision: TradeDecisionStatus;
+  status: TradeStatus;
 }
 
 export interface TradeDecision extends TradeSignal {
   decision: TradeDecisionStatus;
+  price: number;
+  status: TradeStatus;
   skipReason?: string;
   outcome?: "win" | "loss" | "pending";
   pnl?: number;               // USDC

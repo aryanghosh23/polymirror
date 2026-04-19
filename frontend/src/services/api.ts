@@ -8,9 +8,7 @@
  */
 
 import {
-  MOCK_TRADERS,
   MOCK_LIVE_TRADES,
-  MOCK_TRADE_HISTORY,
   MOCK_DASHBOARD,
   MOCK_BOT_CONFIG,
 } from "@/data/mockData";
@@ -22,7 +20,7 @@ import type {
   PerformanceSummary,
 } from "@/types";
 
-const API_BASE = "http://localhost:8000";
+const API_BASE = "/api";
 
 // Set to true to skip real API calls and always use mock data
 export const DEMO_MODE = false;
@@ -44,7 +42,21 @@ function normalizeScore(score: number): number {
   return Math.round((score / 7) * 100);
 }
 
-function dbTraderToFrontend(row: Record<string, unknown>): Trader {
+function getCopiedTradeCount(
+  walletAddress: string,
+  trades: Record<string, unknown>[]
+): number {
+  return trades.filter((trade) => {
+    const traderId = String((trade.user_copy as string) ?? "");
+    const decision = String((trade.trade_decision as string) ?? "").toLowerCase();
+    return traderId === walletAddress && decision === "copied";
+  }).length;
+}
+
+function dbTraderToFrontend(
+  row: Record<string, unknown>,
+  copiedTradeCount: number
+): Trader {
   const stats = (row.statistics as Record<string, number>) ?? {};
   return {
     id: row.wallet_address as string,
@@ -52,70 +64,120 @@ function dbTraderToFrontend(row: Record<string, unknown>): Trader {
     username: (row.wallet_address as string).slice(0, 10) + "…",
     avatarInitials: (row.wallet_address as string).slice(2, 4).toUpperCase(),
     overallScore: normalizeScore((row.trusted_score as number) ?? 0),
+    trustedScore: Number((row.trusted_score as number) ?? 0),
     winRate: stats.win_rate ?? 0,
     avgROI: stats.total_pnl && stats.money_won
       ? stats.total_pnl / (stats.money_won + Math.abs(stats.money_lost ?? 0))
       : 0,
-    totalTrades: 0, // not stored in db yet
+    totalTrades: copiedTradeCount,
     bestCategories: [],
     status: (row.still_monitoring as boolean) ? "active" : "inactive",
-    volumeUSDC: (stats.money_won ?? 0) + Math.abs(stats.money_lost ?? 0),
+    volumeUSDC: stats.money_won ?? 0,
     joinedAt: new Date().toISOString(),
     categoryBreakdown: [],
   };
 }
 
 function dbTradeToDecision(row: Record<string, unknown>): TradeDecision {
-  const score = (row.trade_score as number) ?? 0;
+  const score = Number((row.trade_score as number) ?? 0);
+  const price = Number((row.price as number) ?? 0);
+  const tradeDecision = String((row.trade_decision as string) ?? "").toLowerCase();
+  const tradeStatus = String((row.status as string) ?? "").toLowerCase();
+  const tradeOutcome = String((row.outcome as string) ?? "").toLowerCase();
+  const timestamp = (row.timestamp as string) ?? (row.created_at as string);
   return {
     id: row.id as string ?? String(row.created_at),
     traderId: row.user_copy as string,
     traderName: (row.user_copy as string)?.slice(0, 10) + "…",
     traderScore: 0, // not joined in this query
+    icon: typeof row.icon === "string" ? row.icon : null,
     market: row.trade_name as string,
     marketSlug: "",
     side: (row.position as string)?.toLowerCase().includes("no") ? "NO" : "YES",
-    size: row.price as number,
-    tradeScore: normalizeScore(score),
-    timestamp: row.created_at as string,
+    size: price,
+    tradeScore: score,
+    timestamp,
     category: "other",
-    decision: (row.status as string) === "EXECUTE" ? "copied" : "skipped",
-    skipReason: (row.status as string) === "PASS"
-      ? `Trade score below threshold (${normalizeScore(score)} < 70)`
-      : undefined,
+    price,
+    status: tradeStatus === "closed" ? "closed" : "open",
+    decision: tradeDecision === "copied" ? "copied" : "passed",
+    outcome: tradeOutcome === "won" || tradeOutcome === "win"
+      ? "win"
+      : tradeOutcome === "loss" || tradeOutcome === "lost"
+        ? "loss"
+        : tradeOutcome === "undecided"
+          ? "pending"
+          : undefined,
   };
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export async function getDashboardData(): Promise<PerformanceSummary> {
-  const data = await apiFetch<Record<string, unknown>>("/dashboard");
-  if (data) {
+  const [tradeRows, traderRows] = await Promise.all([
+    apiFetch<Record<string, unknown>[]>("/trades"),
+    apiFetch<Record<string, unknown>[]>("/traders"),
+  ]);
+
+  if (tradeRows && traderRows) {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const trades = tradeRows
+      .map(dbTradeToDecision)
+      .filter((trade) => new Date(trade.timestamp) >= sevenDaysAgo);
+
+    const resolved = trades.filter((trade) => trade.outcome === "win" || trade.outcome === "loss");
+    const wins = resolved.filter((trade) => trade.outcome === "win").length;
+
     return {
-      botStatus: (data.botStatus as PerformanceSummary["botStatus"]) ?? "running",
-      tradesToday: (data.tradesToday as number) ?? 0,
-      winRate7d: (data.winRate7d as number) ?? 0,
-      pnl7d: 0, // not yet tracked in backend
-      activeTradersTracked: (data.activeTradersTracked as number) ?? 0,
+      botStatus: "running",
+      tradesToday: trades.length,
+      winRate7d: resolved.length > 0 ? wins / resolved.length : 0,
+      pnl7d: 0,
+      activeTradersTracked: traderRows.filter((trader) => trader.still_monitoring === true).length,
       riskStatus: "low",
       dailyExposureUsed: 0,
       dailyExposureCap: 5000,
     };
   }
-  return MOCK_DASHBOARD;
+
+  return {
+    ...MOCK_DASHBOARD,
+    botStatus: "error",
+  };
 }
 
 export async function getTraders(): Promise<Trader[]> {
-  const data = await apiFetch<Record<string, unknown>[]>("/traders");
-  if (data && data.length > 0) return data.map(dbTraderToFrontend);
-  return MOCK_TRADERS;
+  const [traderRows, tradeRows] = await Promise.all([
+    apiFetch<Record<string, unknown>[]>("/traders"),
+    apiFetch<Record<string, unknown>[]>("/trades"),
+  ]);
+
+  if (traderRows && traderRows.length > 0) {
+    const trades = tradeRows ?? [];
+    return traderRows.map((row) =>
+      dbTraderToFrontend(row, getCopiedTradeCount(String(row.wallet_address ?? ""), trades))
+    );
+  }
+
+  return [];
 }
 
 export async function getTraderById(id: string): Promise<Trader | null> {
-  // id is wallet_address when coming from real data, or mock id otherwise
-  const data = await apiFetch<Record<string, unknown>>(`/traders/${id}`);
-  if (data) return dbTraderToFrontend(data);
-  return MOCK_TRADERS.find((t) => t.id === id) ?? null;
+  const [traderRow, tradeRows] = await Promise.all([
+    apiFetch<Record<string, unknown>>(`/traders/${id}`),
+    apiFetch<Record<string, unknown>[]>("/trades"),
+  ]);
+
+  if (traderRow) {
+    return dbTraderToFrontend(
+      traderRow,
+      getCopiedTradeCount(String(traderRow.wallet_address ?? ""), tradeRows ?? [])
+    );
+  }
+
+  return null;
 }
 
 export async function getLiveTrades(): Promise<TradeSignal[]> {
@@ -124,21 +186,24 @@ export async function getLiveTrades(): Promise<TradeSignal[]> {
   if (data && data.length > 0) {
     return data.map((row) => {
       const d = dbTradeToDecision(row);
-      // TradeSignal is a subset of TradeDecision — omit decision fields
       return {
         id: d.id,
         traderId: d.traderId,
         traderName: d.traderName,
         traderScore: d.traderScore,
+        icon: d.icon,
         market: d.market,
         marketSlug: d.marketSlug,
         side: d.side,
         size: d.size,
+        price: d.price,
         tradeScore: d.tradeScore,
         timestamp: d.timestamp,
         category: d.category,
+        decision: d.decision,
+        status: d.status,
       };
-    });
+    }).filter((trade) => trade.status === "open" && trade.decision === "copied");
   }
   return MOCK_LIVE_TRADES;
 }
@@ -146,7 +211,7 @@ export async function getLiveTrades(): Promise<TradeSignal[]> {
 export async function getTradeHistory(): Promise<TradeDecision[]> {
   const data = await apiFetch<Record<string, unknown>[]>("/trades");
   if (data && data.length > 0) return data.map(dbTradeToDecision);
-  return MOCK_TRADE_HISTORY;
+  return [];
 }
 
 export async function getBotConfig(): Promise<BotConfig> {

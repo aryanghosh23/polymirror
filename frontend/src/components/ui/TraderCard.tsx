@@ -34,11 +34,11 @@ export default function TraderCard({ trader }: { trader: Trader }) {
             <p className="text-white text-sm font-semibold">{formatPct(trader.winRate)}</p>
           </div>
           <div>
-            <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Avg ROI</p>
-            <p className="text-accent-green text-sm font-semibold">+{formatPct(trader.avgROI)}</p>
+            <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Trusted Score</p>
+            <p className="text-accent-green text-sm font-semibold">{trader.trustedScore.toFixed(1)}</p>
           </div>
           <div>
-            <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Trades</p>
+            <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Copied trades</p>
             <p className="text-white text-sm font-semibold">{trader.totalTrades}</p>
           </div>
         </div>
@@ -54,7 +54,7 @@ export default function TraderCard({ trader }: { trader: Trader }) {
               </span>
             ))}
           </div>
-          <span className="text-slate-500 text-xs">{formatUSDC(trader.volumeUSDC)} vol</span>
+          <span className="text-slate-500 text-xs">{formatUSDC(trader.volumeUSDC)} money won</span>
         </div>
       </div>
     </Link>

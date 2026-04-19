@@ -90,7 +90,7 @@ export default function TraderProfilePage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Win Rate", value: formatPct(trader.winRate), icon: BarChart2, color: "text-accent-green" },
-          { label: "Avg ROI", value: `+${formatPct(trader.avgROI)}`, icon: TrendingUp, color: "text-accent-green" },
+          { label: "Trusted Score", value: trader.trustedScore.toFixed(1), icon: TrendingUp, color: "text-accent-green" },
           { label: "Total Trades", value: String(trader.totalTrades), icon: Activity, color: "text-accent-blue" },
           { label: "Best Category", value: trader.bestCategories[0], icon: Activity, color: "text-accent-purple" },
         ].map(({ label, value, icon: Icon, color }) => (
