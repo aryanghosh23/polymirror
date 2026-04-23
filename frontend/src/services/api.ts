@@ -10,14 +10,13 @@
 import {
   MOCK_LIVE_TRADES,
   MOCK_DASHBOARD,
-  MOCK_BOT_CONFIG,
 } from "@/data/mockData";
 import type {
   Trader,
   TradeSignal,
   TradeDecision,
-  BotConfig,
   PerformanceSummary,
+  Category,
 } from "@/types";
 
 const API_BASE = "/api";
@@ -36,28 +35,106 @@ async function apiFetch<T>(path: string): Promise<T | null> {
   }
 }
 
+async function apiPost<T>(path: string, body?: unknown): Promise<T | null> {
+  if (DEMO_MODE) return null;
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+    if (!res.ok) return null;
+    return res.json() as Promise<T>;
+  } catch {
+    return null;
+  }
+}
+
 // ── Shape adapters ────────────────────────────────────────────────────────────
 // Backend trusted_score is 0–7; frontend expects 0–100. Normalize linearly.
 function normalizeScore(score: number): number {
   return Math.round((score / 7) * 100);
 }
 
-function getCopiedTradeCount(
+function getStrongestCategories(stats: Record<string, unknown>): string[] {
+  const rawCategories = stats.strongest_categories;
+
+  if (Array.isArray(rawCategories)) {
+    return rawCategories
+      .map((category) => String(category).trim())
+      .filter(Boolean)
+      .slice(0, 3);
+  }
+
+  if (typeof rawCategories === "string") {
+    try {
+      const parsed = JSON.parse(rawCategories);
+      if (Array.isArray(parsed)) {
+        return parsed
+          .map((category) => String(category).trim())
+          .filter(Boolean)
+          .slice(0, 3);
+      }
+    } catch {
+      return rawCategories
+        .split(",")
+        .map((category) => category.trim())
+        .filter(Boolean)
+        .slice(0, 3);
+    }
+  }
+
+  return [];
+}
+
+function getRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function normalizeCategory(value: unknown): Category {
+  const category = String(value ?? "").toLowerCase();
+  const knownCategories: Category[] = [
+    "politics",
+    "sports",
+    "crypto",
+    "finance",
+    "science",
+    "entertainment",
+    "other",
+  ];
+
+  return knownCategories.includes(category as Category) ? (category as Category) : "other";
+}
+
+function getCopiedTradeStats(
   walletAddress: string,
   trades: Record<string, unknown>[]
-): number {
-  return trades.filter((trade) => {
+): { count: number; moneySpentUSDC: number } {
+  const copiedTrades = trades.filter((trade) => {
     const traderId = String((trade.user_copy as string) ?? "");
     const decision = String((trade.trade_decision as string) ?? "").toLowerCase();
-    return traderId === walletAddress && decision === "copied";
-  }).length;
+    const status = String((trade.status as string) ?? "").toLowerCase();
+    return traderId === walletAddress && (decision === "copied" || status === "execute");
+  });
+
+  return {
+    count: copiedTrades.length,
+    moneySpentUSDC: copiedTrades.reduce(
+      (total, trade) => total + Number((trade.money_spent as number) ?? 0),
+      0
+    ),
+  };
 }
 
 function dbTraderToFrontend(
   row: Record<string, unknown>,
-  copiedTradeCount: number
+  copiedTradeStats: { count: number; moneySpentUSDC: number }
 ): Trader {
-  const stats = (row.statistics as Record<string, number>) ?? {};
+  const stats = (row.statistics as Record<string, unknown>) ?? {};
   return {
     id: row.wallet_address as string,
     address: row.wallet_address as string,
@@ -65,22 +142,26 @@ function dbTraderToFrontend(
     avatarInitials: (row.wallet_address as string).slice(2, 4).toUpperCase(),
     overallScore: normalizeScore((row.trusted_score as number) ?? 0),
     trustedScore: Number((row.trusted_score as number) ?? 0),
-    winRate: stats.win_rate ?? 0,
-    avgROI: stats.total_pnl && stats.money_won
-      ? stats.total_pnl / (stats.money_won + Math.abs(stats.money_lost ?? 0))
+    winRate: Number(stats.win_percentage ?? stats.win_rate ?? 0),
+    avgROI: Number(stats.total_pnl) && Number(stats.money_won)
+      ? Number(stats.total_pnl) / (Number(stats.money_won) + Math.abs(Number(stats.money_lost ?? 0)))
       : 0,
-    totalTrades: copiedTradeCount,
-    bestCategories: [],
+    totalTrades: copiedTradeStats.count,
+    bestCategories: getStrongestCategories(stats),
     status: (row.still_monitoring as boolean) ? "active" : "inactive",
-    volumeUSDC: stats.money_won ?? 0,
+    volumeUSDC: Number(stats.money_won ?? 0),
+    moneySpentUSDC: copiedTradeStats.moneySpentUSDC,
     joinedAt: new Date().toISOString(),
     categoryBreakdown: [],
   };
 }
 
 function dbTradeToDecision(row: Record<string, unknown>): TradeDecision {
+  const market = getRecord(row.market);
   const score = Number((row.trade_score as number) ?? 0);
   const price = Number((row.price as number) ?? 0);
+  const moneySpentUSDC = Number((row.money_spent as number) ?? 0);
+  const tradeAction = String((row.trade as string) ?? (row.side as string) ?? "").toUpperCase();
   const tradeDecision = String((row.trade_decision as string) ?? "").toLowerCase();
   const tradeStatus = String((row.status as string) ?? "").toLowerCase();
   const tradeOutcome = String((row.outcome as string) ?? "").toLowerCase();
@@ -90,24 +171,26 @@ function dbTradeToDecision(row: Record<string, unknown>): TradeDecision {
     traderId: row.user_copy as string,
     traderName: (row.user_copy as string)?.slice(0, 10) + "…",
     traderScore: 0, // not joined in this query
-    icon: typeof row.icon === "string" ? row.icon : null,
-    market: row.trade_name as string,
-    marketSlug: "",
-    side: (row.position as string)?.toLowerCase().includes("no") ? "NO" : "YES",
-    size: price,
+    icon: typeof row.icon === "string" ? row.icon : typeof market.icon === "string" ? market.icon : null,
+    market: (row.trade_name as string) ?? (market.title as string) ?? "",
+    marketSlug: (market.slug as string) ?? (market.eventSlug as string) ?? "",
+    side: String((row.position as string) ?? (market.outcome as string)).toLowerCase().includes("no") ? "NO" : "YES",
+    trade: tradeAction === "SELL" ? "SELL" : "BUY",
+    size: moneySpentUSDC,
     tradeScore: score,
     timestamp,
-    category: "other",
+    category: normalizeCategory(market.category),
     price,
     status: tradeStatus === "closed" ? "closed" : "open",
-    decision: tradeDecision === "copied" ? "copied" : "passed",
+    decision: tradeDecision === "copied" || tradeStatus === "execute" ? "copied" : "passed",
+    moneySpentUSDC,
     outcome: tradeOutcome === "won" || tradeOutcome === "win"
-      ? "win"
+      ? "won"
       : tradeOutcome === "loss" || tradeOutcome === "lost"
         ? "loss"
-        : tradeOutcome === "undecided"
-          ? "pending"
-          : undefined,
+        : tradeOutcome === "pass" || tradeOutcome === "passed"
+          ? "passed"
+          : "undecided",
   };
 }
 
@@ -127,8 +210,11 @@ export async function getDashboardData(): Promise<PerformanceSummary> {
       .map(dbTradeToDecision)
       .filter((trade) => new Date(trade.timestamp) >= sevenDaysAgo);
 
-    const resolved = trades.filter((trade) => trade.outcome === "win" || trade.outcome === "loss");
-    const wins = resolved.filter((trade) => trade.outcome === "win").length;
+    const resolved = trades.filter((trade) => trade.outcome === "won" || trade.outcome === "loss");
+    const wins = resolved.filter((trade) => trade.outcome === "won").length;
+    const copiedSpend7d = trades
+      .filter((trade) => trade.decision === "copied")
+      .reduce((total, trade) => total + trade.moneySpentUSDC, 0);
 
     return {
       botStatus: "running",
@@ -137,7 +223,7 @@ export async function getDashboardData(): Promise<PerformanceSummary> {
       pnl7d: 0,
       activeTradersTracked: traderRows.filter((trader) => trader.still_monitoring === true).length,
       riskStatus: "low",
-      dailyExposureUsed: 0,
+      dailyExposureUsed: copiedSpend7d,
       dailyExposureCap: 5000,
     };
   }
@@ -157,7 +243,7 @@ export async function getTraders(): Promise<Trader[]> {
   if (traderRows && traderRows.length > 0) {
     const trades = tradeRows ?? [];
     return traderRows.map((row) =>
-      dbTraderToFrontend(row, getCopiedTradeCount(String(row.wallet_address ?? ""), trades))
+      dbTraderToFrontend(row, getCopiedTradeStats(String(row.wallet_address ?? ""), trades))
     );
   }
 
@@ -173,7 +259,7 @@ export async function getTraderById(id: string): Promise<Trader | null> {
   if (traderRow) {
     return dbTraderToFrontend(
       traderRow,
-      getCopiedTradeCount(String(traderRow.wallet_address ?? ""), tradeRows ?? [])
+      getCopiedTradeStats(String(traderRow.wallet_address ?? ""), tradeRows ?? [])
     );
   }
 
@@ -184,9 +270,15 @@ export async function getLiveTrades(): Promise<TradeSignal[]> {
   // /trades returns the 4 most recent — use as live feed
   const data = await apiFetch<Record<string, unknown>[]>("/trades");
   if (data && data.length > 0) {
-    return data.map((row) => {
-      const d = dbTradeToDecision(row);
-      return {
+    return data
+      .map(dbTradeToDecision)
+      .filter((trade) =>
+        trade.status === "open" &&
+        trade.decision === "copied" &&
+        trade.outcome !== "won" &&
+        trade.outcome !== "loss"
+      )
+      .map((d) => ({
         id: d.id,
         traderId: d.traderId,
         traderName: d.traderName,
@@ -195,6 +287,7 @@ export async function getLiveTrades(): Promise<TradeSignal[]> {
         market: d.market,
         marketSlug: d.marketSlug,
         side: d.side,
+        trade: d.trade,
         size: d.size,
         price: d.price,
         tradeScore: d.tradeScore,
@@ -202,8 +295,8 @@ export async function getLiveTrades(): Promise<TradeSignal[]> {
         category: d.category,
         decision: d.decision,
         status: d.status,
-      };
-    }).filter((trade) => trade.status === "open" && trade.decision === "copied");
+        moneySpentUSDC: d.moneySpentUSDC,
+      }));
   }
   return MOCK_LIVE_TRADES;
 }
@@ -214,12 +307,8 @@ export async function getTradeHistory(): Promise<TradeDecision[]> {
   return [];
 }
 
-export async function getBotConfig(): Promise<BotConfig> {
-  // No backend config endpoint yet — always uses local state
-  return MOCK_BOT_CONFIG;
-}
-
-export async function saveBotConfig(_config: BotConfig): Promise<boolean> {
-  // No backend config endpoint yet
-  return false;
+export async function getConcludedTrades(): Promise<TradeDecision[]> {
+  await apiPost("/trades/refresh-concluded", { limit: 50 });
+  const trades = await getTradeHistory();
+  return trades.filter((trade) => trade.outcome === "won" || trade.outcome === "loss");
 }

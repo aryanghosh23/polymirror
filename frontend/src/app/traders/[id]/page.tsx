@@ -15,7 +15,7 @@ import ScoreBadge from "@/components/ui/ScoreBadge";
 import StatusBadge from "@/components/ui/StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import { getTraderById, getLiveTrades } from "@/services/api";
-import { formatPct, formatUSDC, timeAgo } from "@/lib/utils";
+import { formatPct, formatTradePrice, formatUSDC, timeAgo } from "@/lib/utils";
 import type { Trader, TradeSignal } from "@/types";
 
 export default function TraderProfilePage() {
@@ -73,7 +73,7 @@ export default function TraderProfilePage() {
               <p className="text-slate-500 text-xs font-mono mt-0.5">{trader.address}</p>
               <div className="flex items-center gap-2 mt-2">
                 <StatusBadge status={trader.status} />
-                <span className="text-slate-500 text-xs">{formatUSDC(trader.volumeUSDC)} total volume</span>
+                <span className="text-slate-500 text-xs">{formatUSDC(trader.moneySpentUSDC)} copied spend</span>
               </div>
             </div>
           </div>
@@ -92,7 +92,7 @@ export default function TraderProfilePage() {
           { label: "Win Rate", value: formatPct(trader.winRate), icon: BarChart2, color: "text-accent-green" },
           { label: "Trusted Score", value: trader.trustedScore.toFixed(1), icon: TrendingUp, color: "text-accent-green" },
           { label: "Total Trades", value: String(trader.totalTrades), icon: Activity, color: "text-accent-blue" },
-          { label: "Best Category", value: trader.bestCategories[0], icon: Activity, color: "text-accent-purple" },
+          { label: "Money Spent", value: formatUSDC(trader.moneySpentUSDC), icon: Activity, color: "text-accent-purple" },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-surface-card border border-surface-border rounded-xl p-5">
             <div className="flex items-center gap-2 mb-3">
@@ -177,14 +177,24 @@ export default function TraderProfilePage() {
                 </div>
                 <span
                   className={`text-xs font-mono font-bold px-2 py-1 rounded ${
-                    sig.side === "YES"
+                    sig.trade === "BUY"
                       ? "bg-accent-green/10 text-accent-green"
                       : "bg-accent-red/10 text-accent-red"
                   }`}
                 >
+                  {sig.trade}
+                </span>
+                <span className="text-xs font-mono font-bold px-2 py-1 rounded bg-surface-elevated text-slate-300">
                   {sig.side}
                 </span>
-                <span className="text-white text-sm font-medium">{formatUSDC(sig.size)}</span>
+                <div className="text-right">
+                  <p className="text-slate-300 text-xs font-mono">{formatTradePrice(sig.price)}</p>
+                  <p className="text-slate-500 text-[10px]">price</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-white text-sm font-medium">{formatUSDC(sig.moneySpentUSDC)}</p>
+                  <p className="text-slate-500 text-[10px]">spent</p>
+                </div>
                 <ScoreBadge score={sig.tradeScore} size="sm" />
               </div>
             ))}

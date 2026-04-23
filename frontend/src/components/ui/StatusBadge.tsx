@@ -1,10 +1,11 @@
 import { cn } from "@/lib/utils";
 
-type Status = "copied" | "passed" | "pending" | "active" | "inactive" | "watchlist" | "running" | "paused" | "error" | "win" | "loss" | "open" | "closed";
+type Status = "copied" | "passed" | "pending" | "active" | "inactive" | "watchlist" | "running" | "paused" | "error" | "win" | "won" | "loss" | "undecided" | "open" | "closed";
 
 const STATUS_STYLES: Record<Status, string> = {
   copied:    "bg-accent-green/10 text-accent-green border-accent-green/20",
   win:       "bg-accent-green/10 text-accent-green border-accent-green/20",
+  won:       "bg-accent-green/10 text-accent-green border-accent-green/20",
   active:    "bg-accent-green/10 text-accent-green border-accent-green/20",
   running:   "bg-accent-green/10 text-accent-green border-accent-green/20",
   passed:    "bg-slate-500/10 text-slate-400 border-slate-500/20",
@@ -12,6 +13,7 @@ const STATUS_STYLES: Record<Status, string> = {
   paused:    "bg-slate-500/10 text-slate-400 border-slate-500/20",
   closed:    "bg-slate-500/10 text-slate-400 border-slate-500/20",
   pending:   "bg-accent-amber/10 text-accent-amber border-accent-amber/20",
+  undecided: "bg-accent-amber/10 text-accent-amber border-accent-amber/20",
   watchlist: "bg-accent-amber/10 text-accent-amber border-accent-amber/20",
   open:      "bg-accent-blue/10 text-accent-blue border-accent-blue/20",
   loss:      "bg-accent-red/10 text-accent-red border-accent-red/20",
@@ -19,10 +21,10 @@ const STATUS_STYLES: Record<Status, string> = {
 };
 
 const STATUS_DOTS: Record<Status, string> = {
-  copied: "bg-accent-green", win: "bg-accent-green", active: "bg-accent-green", running: "bg-accent-green",
+  copied: "bg-accent-green", win: "bg-accent-green", won: "bg-accent-green", active: "bg-accent-green", running: "bg-accent-green",
   passed: "bg-slate-500", inactive: "bg-slate-500", paused: "bg-slate-500", closed: "bg-slate-500",
   open: "bg-accent-blue",
-  pending: "bg-accent-amber", watchlist: "bg-accent-amber",
+  pending: "bg-accent-amber", undecided: "bg-accent-amber", watchlist: "bg-accent-amber",
   loss: "bg-accent-red", error: "bg-accent-red",
 };
 

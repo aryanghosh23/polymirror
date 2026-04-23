@@ -14,7 +14,7 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import ScoreBadge from "@/components/ui/ScoreBadge";
 import DataTable from "@/components/ui/DataTable";
 import { getDashboardData, getTradeHistory } from "@/services/api";
-import { formatPct, formatUSDC } from "@/lib/utils";
+import { formatPct, formatTradePrice, formatUSDC } from "@/lib/utils";
 import type { PerformanceSummary, TradeDecision } from "@/types";
 
 export default function DashboardPage() {
@@ -87,9 +87,9 @@ export default function DashboardPage() {
           trend="neutral"
         />
         <StatCard
-          label="Tracked Wallets"
-          value={String(summary.activeTradersTracked)}
-          sub="Currently monitored"
+          label="7d Copied Spend"
+          value={formatUSDC(summary.dailyExposureUsed)}
+          sub="USDC spent on copied trades"
           icon={Users}
           accent="purple"
           trend="neutral"
@@ -131,16 +131,25 @@ export default function DashboardPage() {
               ),
             },
             {
-              key: "side",
-              header: "Side",
+              key: "trade",
+              header: "Trade",
               render: (r) => (
                 <span
                   className={
-                    r.side === "YES"
+                    r.trade === "BUY"
                       ? "text-accent-green font-mono text-xs font-semibold"
                       : "text-accent-red font-mono text-xs font-semibold"
                   }
                 >
+                  {r.trade}
+                </span>
+              ),
+            },
+            {
+              key: "side",
+              header: "Outcome",
+              render: (r) => (
+                <span className="text-slate-300 font-mono text-xs font-semibold">
                   {r.side}
                 </span>
               ),
@@ -159,7 +168,13 @@ export default function DashboardPage() {
               key: "price",
               header: "Price",
               align: "right",
-              render: (r) => <span className="text-white text-sm font-mono">{r.price}</span>,
+              render: (r) => <span className="text-white text-sm font-mono">{formatTradePrice(r.price)}</span>,
+            },
+            {
+              key: "moneySpent",
+              header: "Spent",
+              align: "right",
+              render: (r) => <span className="text-white text-sm font-mono">{formatUSDC(r.moneySpentUSDC)}</span>,
             },
             {
               key: "time",

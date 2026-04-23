@@ -7,7 +7,7 @@ import {
   Users,
   Zap,
   History,
-  Settings,
+  Trophy,
   TrendingUp,
   Activity,
 } from "lucide-react";
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   { href: "/traders", label: "Traders", icon: Users },
   { href: "/live-trades", label: "Live Trades", icon: Zap },
   { href: "/history", label: "History", icon: History },
-  { href: "/bot-config", label: "Bot Config", icon: Settings },
+  { href: "/concluded-trades", label: "Concluded", icon: Trophy },
 ];
 
 export default function Sidebar() {
@@ -76,7 +76,8 @@ export default function Sidebar() {
           <div className="flex-1 min-w-0">
             <p className="text-xs font-medium text-white truncate">My Bot</p>
             <p className="text-[10px] text-slate-500 font-mono truncate">
-              0x000000
+            0x64d62f624dff82248a645bb8007f2c8b012c8795
+
             </p>
           </div>
           <span className="w-2 h-2 rounded-full bg-accent-green flex-shrink-0" />

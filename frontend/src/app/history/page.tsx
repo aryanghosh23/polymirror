@@ -7,13 +7,14 @@ import StatusBadge from "@/components/ui/StatusBadge";
 import DataTable from "@/components/ui/DataTable";
 import EmptyState from "@/components/ui/EmptyState";
 import { getTradeHistory } from "@/services/api";
-import type { TradeDecision, TradeDecisionStatus, TradeStatus } from "@/types";
+import { formatTradePrice, formatUSDC } from "@/lib/utils";
+import type { TradeDecision, TradeDecisionStatus, TradeOutcome } from "@/types";
 
 export default function HistoryPage() {
   const [trades, setTrades] = useState<TradeDecision[]>([]);
   const [loading, setLoading] = useState(true);
   const [decisionFilter, setDecisionFilter] = useState<TradeDecisionStatus | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<TradeStatus | "all">("all");
+  const [outcomeFilter, setOutcomeFilter] = useState<TradeOutcome | "all">("all");
 
   useEffect(() => {
     getTradeHistory().then((d) => { setTrades(d); setLoading(false); });
@@ -22,19 +23,29 @@ export default function HistoryPage() {
   const filtered = useMemo(() => {
     return trades.filter((t) => {
       if (decisionFilter !== "all" && t.decision !== decisionFilter) return false;
-      if (statusFilter !== "all" && t.status !== statusFilter) return false;
+      if (outcomeFilter !== "all" && t.outcome !== outcomeFilter) return false;
       return true;
     });
-  }, [trades, decisionFilter, statusFilter]);
+  }, [trades, decisionFilter, outcomeFilter]);
+
+  const wonTrades = trades.filter((t) => t.outcome === "won");
+  const lostTrades = trades.filter((t) => t.outcome === "loss");
+  const resolvedTradeCount = wonTrades.length + lostTrades.length;
+  const winPercentage = resolvedTradeCount > 0 ? wonTrades.length / resolvedTradeCount : 0;
+  const moneyWon = wonTrades.reduce((total, trade) => {
+    if (typeof trade.pnl === "number") return total + trade.pnl;
+    return total + trade.moneySpentUSDC * Math.max((1 / Math.max(trade.price, 0.01)) - 1, 0);
+  }, 0);
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
           { label: "Copied Trades", value: String(trades.filter((t) => t.decision === "copied").length), color: "text-accent-blue" },
-          { label: "Passed", value: String(trades.filter((t) => t.decision === "passed").length), color: "text-slate-400" },
-          { label: "Open", value: String(trades.filter((t) => t.status === "open").length), color: "text-accent-blue" },
-          { label: "Closed", value: String(trades.filter((t) => t.status === "closed").length), color: "text-slate-400" },
+          { label: "Win Percentage", value: `${Math.round(winPercentage * 100)}%`, color: "text-accent-blue" },
+          { label: "Won", value: String(wonTrades.length), color: "text-accent-green" },
+          { label: "Loss", value: String(lostTrades.length), color: "text-accent-red" },
+          { label: "Money Won", value: formatUSDC(moneyWon), color: "text-accent-green" },
         ].map(({ label, value, color }) => (
           <div key={label} className="bg-surface-card border border-surface-border rounded-xl p-5">
             <p className="text-slate-500 text-xs uppercase tracking-wider mb-2">{label}</p>
@@ -58,13 +69,15 @@ export default function HistoryPage() {
         </select>
 
         <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as TradeStatus | "all")}
+          value={outcomeFilter}
+          onChange={(e) => setOutcomeFilter(e.target.value as TradeOutcome | "all")}
           className="bg-surface-elevated border border-surface-border rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-accent-blue/50 transition-colors"
         >
-          <option value="all">All Statuses</option>
-          <option value="open">Open</option>
-          <option value="closed">Closed</option>
+          <option value="all">All Outcomes</option>
+          <option value="undecided">Undecided</option>
+          <option value="passed">Passed</option>
+          <option value="won">Won</option>
+          <option value="loss">Loss</option>
         </select>
 
         <span className="text-slate-500 text-xs ml-auto">{filtered.length} records</span>
@@ -107,14 +120,23 @@ export default function HistoryPage() {
                 ),
               },
               {
-                key: "side",
-                header: "Side",
+                key: "trade",
+                header: "Trade",
                 render: (r) => (
                   <span
                     className={`text-xs font-mono font-bold ${
-                      r.side === "YES" ? "text-accent-green" : "text-accent-red"
+                      r.trade === "BUY" ? "text-accent-green" : "text-accent-red"
                     }`}
                   >
+                    {r.trade}
+                  </span>
+                ),
+              },
+              {
+                key: "side",
+                header: "Outcome",
+                render: (r) => (
+                  <span className="text-xs font-mono font-bold text-slate-300">
                     {r.side}
                   </span>
                 ),
@@ -129,7 +151,15 @@ export default function HistoryPage() {
                 header: "Price",
                 align: "right",
                 render: (r) => (
-                  <span className="text-white text-sm font-mono">{r.price}</span>
+                  <span className="text-white text-sm font-mono">{formatTradePrice(r.price)}</span>
+                ),
+              },
+              {
+                key: "moneySpent",
+                header: "Spent",
+                align: "right",
+                render: (r) => (
+                  <span className="text-white text-sm font-mono">{formatUSDC(r.moneySpentUSDC)}</span>
                 ),
               },
               {
@@ -140,7 +170,7 @@ export default function HistoryPage() {
               {
                 key: "status",
                 header: "Status",
-                render: (r) => <StatusBadge status={r.status} />,
+                render: (r) => <StatusBadge status={r.decision === "passed" ? "passed" : r.outcome} />,
               },
               {
                 key: "date",

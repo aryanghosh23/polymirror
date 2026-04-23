@@ -1,8 +1,31 @@
 const {monitor} = require("./user_info")
 const{Clean_trade} = require("./clean_trade")
+const { createClient } = require("@supabase/supabase-js")
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY
+)
+
 let tradeQueue = []
 let queuedJobs = new Set() //duplicate trades avoided
 let isProcessing = false
+
+async function getMonitoredAddresses() {
+  const { data, error } = await supabase
+    .from("traders")
+    .select("wallet_address")
+    .eq("still_monitoring", true)
+
+  if (error) {
+    console.log("supabase monitored addresses error", error)
+    return []
+  }
+
+  return (data || [])
+    .map((trader) => trader.wallet_address)
+    .filter(Boolean)
+}
 
 async function processQueue() {
   if (isProcessing) return
@@ -13,23 +36,20 @@ async function processQueue() {
   const job = tradeQueue.shift()
 
   try {
-    const { body } = job
+    const { body, transactionHash } = job
 
     const activities = body?.event?.activity || []
-
-    const VALID_ADDRESSES = [ //dummy addresses change in the future with real addresses
-      "0x1111111111111111111111111111111111111111",
-      "0x64d62f624dff82248a645bb8007f2c8b012c8795",
-      "0x000000"
-    ]
+    const monitoredAddresses = await getMonitoredAddresses()
+    const validAddresses = new Set(monitoredAddresses.map((address) => address.toLowerCase()))
 
     let userAddress = null
 
     for (let act of activities) {
-      console.log("address", act.fromAddress)
+      // console.log("address", act.fromAddress)
 
-      if (VALID_ADDRESSES.includes(act.fromAddress)) {
-        userAddress = act.fromAddress
+      const fromAddress = act.fromAddress?.toLowerCase()
+      if (fromAddress && validAddresses.has(fromAddress)) {
+        userAddress = monitoredAddresses.find((address) => address.toLowerCase() === fromAddress) || act.fromAddress
         break
       }
     }
@@ -39,8 +59,13 @@ async function processQueue() {
     } else {
       console.log("userAddress", userAddress)
 
-      const trade = await monitor(userAddress) //get trade info
+      const trade = await monitor(userAddress, transactionHash) //get trade info
       console.log("monitor success", trade)
+
+      if (!Array.isArray(trade) || trade.length === 0) {
+        console.log("no new trade found")
+        return
+      }
 
       await Clean_trade(trade, userAddress) //this will add trade to db, rank it, and execute it 
       console.log("clean_trade success")
@@ -60,9 +85,11 @@ function addToQueue(body) {
   const activities = body?.event?.activity || [] 
 
   let key = null
+  let transactionHash = null
 
   for (let act of activities) { //verify if trade is a duplicate
-    key = act.hash || act.transactionHash || act.fromAddress
+    transactionHash = act.hash || act.transactionHash || null
+    key = transactionHash || act.fromAddress
     if (key) break
   }
 
@@ -75,7 +102,7 @@ function addToQueue(body) {
     queuedJobs.add(key)
   }
 
-  tradeQueue.push({ body, key })
+  tradeQueue.push({ body, key, transactionHash })
   console.log("job added, length:", tradeQueue.length)
   processQueue()
 }

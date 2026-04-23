@@ -2,8 +2,10 @@
 
 export type TraderStatus = "active" | "inactive" | "watchlist";
 export type TradeSide = "YES" | "NO";
+export type TradeAction = "BUY" | "SELL";
 export type TradeDecisionStatus = "copied" | "passed";
 export type TradeStatus = "open" | "closed";
+export type TradeOutcome = "undecided" | "won" | "loss" | "passed";
 export type Category = "politics" | "sports" | "crypto" | "finance" | "science" | "entertainment" | "other";
 
 export interface Trader {
@@ -16,9 +18,10 @@ export interface Trader {
   winRate: number;            // 0–1
   avgROI: number;             // decimal, e.g. 0.18 = 18%
   totalTrades: number;
-  bestCategories: Category[];
+  bestCategories: string[];
   status: TraderStatus;
   volumeUSDC: number;
+  moneySpentUSDC: number;
   joinedAt: string;           // ISO date string
   categoryBreakdown: CategoryPerformance[];
 }
@@ -39,6 +42,7 @@ export interface TradeSignal {
   market: string;
   marketSlug: string;
   side: TradeSide;
+  trade: TradeAction;
   size: number;               // USDC
   price: number;
   tradeScore: number;
@@ -46,6 +50,7 @@ export interface TradeSignal {
   category: Category;
   decision: TradeDecisionStatus;
   status: TradeStatus;
+  moneySpentUSDC: number;
 }
 
 export interface TradeDecision extends TradeSignal {
@@ -53,18 +58,9 @@ export interface TradeDecision extends TradeSignal {
   price: number;
   status: TradeStatus;
   skipReason?: string;
-  outcome?: "win" | "loss" | "pending";
+  outcome: TradeOutcome;
   pnl?: number;               // USDC
   resolvedAt?: string;        // ISO
-}
-
-export interface BotConfig {
-  minTraderScore: number;
-  minTradeScore: number;
-  maxPositionUSDC: number;
-  dailyExposureCapUSDC: number;
-  allowedCategories: Category[];
-  autoCopyEnabled: boolean;
 }
 
 export interface PerformanceSummary {

@@ -23,12 +23,12 @@ export default function TraderCard({ trader }: { trader: Trader }) {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <ScoreBadge score={trader.overallScore} />
+        
             <StatusBadge status={trader.status} />
           </div>
         </div>
 
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-4 gap-3">
           <div>
             <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Win Rate</p>
             <p className="text-white text-sm font-semibold">{formatPct(trader.winRate)}</p>
@@ -41,20 +41,31 @@ export default function TraderCard({ trader }: { trader: Trader }) {
             <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Copied trades</p>
             <p className="text-white text-sm font-semibold">{trader.totalTrades}</p>
           </div>
+          <div>
+            <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-0.5">Spent</p>
+            <p className="text-white text-sm font-semibold">{formatUSDC(trader.moneySpentUSDC)}</p>
+          </div>
         </div>
 
-        <div className="mt-4 pt-4 border-t border-surface-border flex items-center justify-between">
-          <div className="flex gap-1.5">
-            {trader.bestCategories.map((cat) => (
-              <span
-                key={cat}
-                className="text-[10px] capitalize bg-surface-elevated border border-surface-border text-slate-400 px-2 py-0.5 rounded"
-              >
-                {cat}
-              </span>
-            ))}
+        <div className="mt-4 pt-4 border-t border-surface-border flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-slate-500 text-[10px] uppercase tracking-wider mb-1">Strongest</p>
+            <div className="flex gap-1.5 flex-wrap">
+              {trader.bestCategories.length > 0 ? (
+                trader.bestCategories.map((cat) => (
+                  <span
+                    key={cat}
+                    className="text-[10px] capitalize bg-surface-elevated border border-surface-border text-slate-400 px-2 py-0.5 rounded"
+                  >
+                    {cat}
+                  </span>
+                ))
+              ) : (
+                <span className="text-[10px] text-slate-500">No category data</span>
+              )}
+            </div>
           </div>
-          <span className="text-slate-500 text-xs">{formatUSDC(trader.volumeUSDC)} money won</span>
+          <span className="text-slate-500 text-xs flex-shrink-0">{formatUSDC(trader.volumeUSDC)} money won</span>
         </div>
       </div>
     </Link>

@@ -91,6 +91,8 @@ Rules:
       console.log("raw from mcp",rawText)
       const parsed_traders = JSON.parse(rawText);
 
+      
+
       const user_scores = scoring_traders(parsed_traders)
       const scored_trader_data = parsed_traders.map((trader, index) => ({
         wallet: trader.wallet,

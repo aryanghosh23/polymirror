@@ -6,6 +6,7 @@ require("dotenv").config();
 
 const host = "https://clob.polymarket.com";
 const chainId = 137;
+const BUY_AMOUNT_USDC = 1;
 
 const funder = process.env.MY_WALLET_ADDRESS; // This is your Polymarket Profile Address, where you send UDSC to.
 const privateKey = process.env.PRIVATE_KEY; // This is your Private Key. If using email login export from https://reveal.magic.link/polymarket otherwise export from your Web3 Application
@@ -20,7 +21,26 @@ const signer = new Wallet(privateKey);
 //1: Magic/Email Login
 const signatureType = 1;
 
-async function execute (tokenID, price, size,)  { //tokenID = market their on, price = how much were going to be putting in, size = how many shares were buying
+function getOrderSide(side) {
+  return String(side || "").toUpperCase() === "SELL" ? Side.SELL : Side.BUY
+}
+
+function getOrderSize(price, size, side) {
+  const orderSide = getOrderSide(side)
+  const numericPrice = Number(price)
+
+  if (orderSide === Side.BUY) {
+    if (!Number.isFinite(numericPrice) || numericPrice <= 0) {
+      throw new Error("invalid price for fixed $1 buy")
+    }
+
+    return BUY_AMOUNT_USDC / numericPrice
+  }
+
+  return size
+}
+
+async function execute (tokenID, price, size, side = "BUY")  { //buys always copy with $1; sells use the passed share size
   try {
     const creds = await new ClobClient(host, chainId, signer).createOrDeriveApiKey();
 
@@ -37,8 +57,8 @@ async function execute (tokenID, price, size,)  { //tokenID = market their on, p
       {
         tokenID: tokenID, //type of market(the clobID)
         price: price,
-        side: Side.BUY,
-        size: size,
+        side: getOrderSide(side),
+        size: getOrderSize(price, size, side),
       },
       { tickSize: "0.01", negRisk: false }, ///You'll need to adjust these based on the market
       OrderType.GTC

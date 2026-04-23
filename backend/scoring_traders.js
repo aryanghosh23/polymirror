@@ -1,40 +1,48 @@
-//method to score users takes in json object
-// { wallet: '0x64d62f624dff82248a645bb8007f2c8b012c8795',
-// win_rate: 0.4706,
-// total_pnl: 0.39,
-// money_won: 0.39,
-// money_lost: 0,
-// rank: 262580}
-// 
-// 
-//going to return json object in this format {wallet_address: 0x123,  trusted_score: 8.0,   still_monitoring: true} and store in db
+//method to score users takes in json object from poly_traders
+// returns a trusted score out of 10
+
+function normalizeRate(value) {
+  const rate = Number(value) || 0
+  return rate > 1 ? rate / 100 : rate
+}
 
 function scoring_traders(trades) { 
 
   // console.log("trades",trades)
         return trades.map((t) => {
           let score = 0;
-      
-          // Win rate
-          if (t.win_rate > 0.7) score += 3; 
-          else if (t.win_rate > 0.6) score += 2;
-          else if (t.win_rate > 0.5) score += 1;
-      
-          // total pnl profit basically
-          if (t.total_pnl > 10000) score += 2;
-          else if (t.total_pnl > 1000) score += 1;
-      
-          // money made vs money lost
-          let efficiency;
-          if (t.money_lost === 0) efficiency = t.money_won > 0 ? Infinity : 0; //edge case for dividing by 0
-          else efficiency = t.money_won / t.money_lost; //score of 2 or higher very good means there making 2-1 profit ratio
-      
-          if (efficiency > 2) score += 2;
-          else if (efficiency > 1.2) score += 1; //slight profit ratio
-      
+          const drawdown = normalizeRate(t.small_drawdown ?? t.drawdown ?? t.max_drawdown)
+          const moneyWon = Number(t.money_won) || 0
+          const moneyLost = Number(t.money_lost) || 0
+          const winPercentage = normalizeRate(t.win_percentage ?? t.win_rate)
+          const avgTradePnl = Number(t.avg_trade_pnl) || 0
+          const tradeCount = Number(t.trade_count ?? t.trades_count ?? t.num_trades ?? t.total_trades) || 0
+          const efficiency = moneyLost === 0 ? (moneyWon > 0 ? Infinity : 0) : moneyWon / moneyLost
 
+          // Drawdown score: max 4
+          if (drawdown < 0.05) score += 4
+          else if (drawdown < 0.1) score += 3
+          else if (drawdown < 0.2) score += 2
+
+          // Efficiency score: max 3
+          if (efficiency >= 2) score += 3
+          else if (efficiency >= 1.5) score += 2
+          else if (efficiency >= 1.2) score += 1
+
+          // Win percentage score: max 2
+          if (winPercentage >= 0.65) score += 2
+          else if (winPercentage >= 0.55) score += 1
+
+          // Trade quality score: max 1
+          if (avgTradePnl >= 50) score += 1
+          else if (avgTradePnl >= 20) score += 0.5
+
+          // Trade count confidence multiplier
+          if (tradeCount < 3) score *= 0.5
+          else if (tradeCount < 5) score *= 0.75
+          else if (tradeCount < 10) score *= 0.9
           
-          return score
+          return Math.round(score * 100) / 100
         });
       }
 

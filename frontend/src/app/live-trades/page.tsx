@@ -6,6 +6,7 @@ import ScoreBadge from "@/components/ui/ScoreBadge";
 import StatusBadge from "@/components/ui/StatusBadge";
 import EmptyState from "@/components/ui/EmptyState";
 import { getLiveTrades } from "@/services/api";
+import { formatTradePrice, formatUSDC } from "@/lib/utils";
 import type { TradeSignal } from "@/types";
 
 const REFRESH_INTERVAL = 10000; // 10s mock refresh
@@ -105,17 +106,26 @@ export default function LiveTradesPage() {
                 <div className="flex items-center gap-3 flex-shrink-0">
                   <span
                     className={`text-sm font-mono font-bold px-2.5 py-1 rounded-md ${
-                      trade.side === "YES"
+                      trade.trade === "BUY"
                         ? "bg-accent-green/10 text-accent-green border border-accent-green/20"
                         : "bg-accent-red/10 text-accent-red border border-accent-red/20"
                     }`}
                   >
+                    {trade.trade}
+                  </span>
+
+                  <span className="text-sm font-mono font-bold px-2.5 py-1 rounded-md bg-surface-elevated text-slate-300 border border-surface-border">
                     {trade.side}
                   </span>
 
                   <div className="text-right hidden sm:block">
-                    <p className="text-white font-semibold text-sm">{trade.price}</p>
+                    <p className="text-white font-semibold text-sm">{formatTradePrice(trade.price)}</p>
                     <p className="text-slate-500 text-xs">price</p>
+                  </div>
+
+                  <div className="text-right hidden md:block">
+                    <p className="text-white font-semibold text-sm">{formatUSDC(trade.moneySpentUSDC)}</p>
+                    <p className="text-slate-500 text-xs">spent</p>
                   </div>
 
                   <div className="text-right hidden md:block">

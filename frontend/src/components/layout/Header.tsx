@@ -8,7 +8,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/traders": "Traders",
   "/live-trades": "Live Trades",
   "/history": "History",
-  "/bot-config": "Bot Config",
+  "/concluded-trades": "Concluded Trades",
 };
 
 export default function Header() {

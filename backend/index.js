@@ -1,15 +1,19 @@
 //main file were copy trading bot will perform trading
 const express = require("express");
 const {monitor} = require('./user_info')
-const {traders} = require('./traders')
 const {createClient} = require("@supabase/supabase-js")
 const {addToQueue} = require("./queue")
 const {Clean_trade} = require("./clean_trade")
 
 const {scoring_traders} = require('./scoring_traders') //remove later
-const{copy_traders} = require("./copy_traders")
 const cors = require("cors")
 const app = express();
+
+const {copy_best} = require("./copy_best")
+const{poly_traders} = require("./poly_traders")
+const { refreshConcludedTrades } = require("./refresh_concluded_trades")
+const NEW_TRADERS_LIMIT = 5
+
 app.use(cors())
 const PORT = 8000;
 
@@ -55,36 +59,79 @@ res.json(trades)
 
 
 
+app.post("/refresh-concluded-trades", async (req, res) => {
+  try {
+    const result = await refreshConcludedTrades(supabase, {
+      limit: req.body?.limit || req.query?.limit,
+    })
+
+    res.json(result)
+  } catch (err) {
+    console.log("refresh concluded trades error", err)
+    res.status(500).json({ error: err.message })
+  }
+})
+
+
+
 //this endpoint will refresh with new traders maybe every week, 2 days depends on user input
 app.get('/new_traders', async (req, res) => {
-  console.log("route reached");
-  
-  //remove later(replace with traders method)
+  try {
+    console.log("route reached");
 
-  const addresses = await copy_traders()
-  console.log("address", addresses)
+    const leaderboard = await copy_best()
+    const addresses = leaderboard
+      .map(user => {
+        if (typeof user === "string") return user
+        return user.proxy_wallet || user.proxyWallet || user.wallet || user.wallet_address || user.address
+      })
+      .filter(Boolean)
 
-  const users = await traders(addresses)
-  console.log("users", users)
+    console.log("addresses", addresses)
 
-  const rows = users.map(user => ({
-    wallet_address: user.wallet,
-    trusted_score: user.score,
-    still_monitoring: true,
-    statistics: user.statistics
-  }));
+    if (addresses.length === 0) {
+      return res.status(200).json([])
+    }
 
-  const { data, error } = await supabase
-    .from('traders')
-    .upsert(rows, { onConflict: 'wallet_address' });
+    const users = (await poly_traders(addresses)).filter(user => user?.wallet)
+    const scores = scoring_traders(users)
 
-  if (error) {
-    console.log(error);
-    return res.status(500).json({ error });
+    console.log("users", users)
+
+    const rows = users
+      .map((user, index) => {
+        const { wallet, ...statistics } = user
+
+        return {
+          wallet_address: wallet,
+          trusted_score: scores[index],
+          still_monitoring: true,
+          statistics
+        }
+      })
+      .sort((a, b) => b.trusted_score - a.trusted_score)
+      .slice(0, NEW_TRADERS_LIMIT);
+
+    if (rows.length === 0) {
+      return res.status(200).json([])
+    }
+
+    console.log("this was reached")
+    const { data, error } = await supabase
+      .from('traders')
+      .upsert(rows, { onConflict: 'wallet_address' });
+
+    if (error) {
+      console.log(error);
+      return res.status(500).json({ error });
+    }
+
+    console.log("success")
+    return res.status(200).json(data)
+  } catch (err) {
+    console.log("error", err)
+    return res.status(500).json({ error: err.message })
   }
-
-  console.log("success")
-  return res.status(200).json(data)
 });
 
 
